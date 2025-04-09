@@ -1,21 +1,27 @@
 package Software;
 
+import java.util.ArrayList;
+
 import Hardware.*;
 
 public class Utilities {
-    private HW hw;
+    private MemoryManager memoryManager;
+    private HW hw; 
 
-    public Utilities(HW _hw) {
+    public Utilities(MemoryManager _memoryManager, HW _hw) {
+        memoryManager = _memoryManager;
         hw = _hw;
     }
 
-    public void loadProgram(Word[] p) {
-        Word[] m = hw.mem.pos;
-        for (int i = 0; i < p.length; i++) {
-            m[i].opc = p[i].opc;
-            m[i].ra = p[i].ra;
-            m[i].rb = p[i].rb;
-            m[i].p = p[i].p;
+    public ArrayList<Page> loadProgram(Word[] p) {
+        ArrayList<Page> pageList = memoryManager.alloc(p);
+
+        if (pageList.isEmpty()) {
+            System.out.println("Falha na alocação de memória. Não foi possível carregar o programa.");
+            return new ArrayList<>();
+        } else {
+            System.out.println("Programa carregado com sucesso na memória.");
+            return pageList;
         }
     }
 
@@ -41,7 +47,7 @@ public class Utilities {
     }
 
     public void loadAndExec(Word[] p) {
-        loadProgram(p);
+        var pages = loadProgram(p);
         System.out.println("---------------------------------- programa carregado na memoria");
         dump(0, p.length);
         hw.cpu.setContext(0);
