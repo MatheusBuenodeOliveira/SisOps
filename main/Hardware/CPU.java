@@ -1,5 +1,7 @@
 package Hardware;
 
+import java.util.List;
+
 import Software.*;
 import Software.Opcode;
 
@@ -26,7 +28,7 @@ public class CPU {
                                 // auxilio aa depuração
     private boolean debug;      // se true entao mostra cada instrucao em execucao
     private Utilities u;        // para debug (dump)
-
+    private List<Page> processPage;
     public CPU(Memory _mem, boolean _debug) { // ref a MEMORIA passada na criacao da CPU
         maxInt = 32767;            // capacidade de representacao modelada
         minInt = -32767;           // se exceder deve gerar interrupcao de overflow
@@ -67,10 +69,18 @@ public class CPU {
         return true;
     }
 
-    public void setContext(int _pc) {                 // usado para setar o contexto da cpu para rodar um processo
-                                                      // [ nesta versao é somente colocar o PC na posicao 0 ]
-        pc = _pc;                                     // pc cfe endereco logico
+    public void setContext(List<Page> _processPage) {                 // usado para setar o contexto da cpu para rodar um processo
+        processPage = _processPage;                                       // [ nesta versao é somente colocar o PC na posicao 0 ]
+        pc = 0;                                     // pc cfe endereco logico
         irpt = Interrupts.noInterrupt;                // reset da interrupcao registrada
+    }
+
+    public int getMemAddr(){
+        if(pc == 0 ){
+            return processPage.get(0).pageStart;
+        }
+
+        return processPage.get(pc/8).pageStart + pc;
     }
 
     public void run() {                               // execucao da CPU supoe que o contexto da CPU, vide acima, 
@@ -81,7 +91,8 @@ public class CPU {
             // --------------------------------------------------------------------------------------------------
             // FASE DE FETCH
             if (legal(pc)) { // pc valido
-                ir = m[pc];  // <<<<<<<<<<<< AQUI faz FETCH - busca posicao da memoria apontada por pc, guarda em ir
+                var memadd = getMemAddr();
+                ir = m[memadd];  // <<<<<<<<<<<< AQUI faz FETCH - busca posicao da memoria apontada por pc, guarda em ir
                              // resto é dump de debug
                 if (debug) {
                     System.out.print("                                              regs: ");
