@@ -9,8 +9,13 @@ public class MemoryManager {
     Memory mem;
 
     public MemoryManager(Memory mem){
-        for(int i =0; i < mem.pos.length; i+=32){
-            pageList.add(new Page(i, i+32, 32, false));
+        for(int i = 0; i < mem.pos.length; i+=8){
+            // if(i == 0){
+            //     pageList.add(new Page(i, i+8, 8, true));
+            // }else
+            // {
+                pageList.add(new Page(i, i+8, 8, false));
+            //}
         }
         this.mem = mem;
     }
@@ -22,7 +27,7 @@ public class MemoryManager {
 
         for(Page pg : pageList){
             if(pg.inUse == false){
-                for(int i = 0; i < 32; i++){
+                for(int i = 0; i < 8; i++){
                     if (restProgramSize < programSize) {
                         mem.pos[pg.pageStart + i] = p[restProgramSize];
                         restProgramSize++;
