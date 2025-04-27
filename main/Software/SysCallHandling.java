@@ -4,6 +4,7 @@ import Hardware.*;
 
 public class SysCallHandling {
     private HW hw;
+    private ProcessManager processManager;
 
     public SysCallHandling(HW _hw) {
         hw = _hw;
@@ -11,6 +12,11 @@ public class SysCallHandling {
 
     public void stop() {
         System.out.println("SYSCALL STOP");
+        processManager.terminateRunningProcess();
+    }
+
+    public void setProcessManager(ProcessManager _processManager) {
+        processManager = _processManager;
     }
 
     public void handle() {

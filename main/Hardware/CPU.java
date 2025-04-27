@@ -75,12 +75,20 @@ public class CPU {
         irpt = Interrupts.noInterrupt;                // reset da interrupcao registrada
     }
 
-    public int getMemAddr(){
-        if(pc == 0 ){
-            return processPage.get(0).pageStart;
+    public int getMemAddr(int logicalAddr) {
+        //calcula página
+        int pageIndex = logicalAddr / 8;
+        //calcula o offset dentro da pagina
+        int offset = logicalAddr % 8;
+
+        // verifica se o endereço é válido
+        if (pageIndex >= processPage.size()) {
+            irpt = Interrupts.intEnderecoInvalido;
+            return -1;
         }
 
-        return processPage.get(pc/8).pageStart + pc;
+        // Get the physical page and add the offset
+        return processPage.get(pageIndex).pageStart + offset;
     }
 
     public void run() {                               // execucao da CPU supoe que o contexto da CPU, vide acima, 
@@ -91,7 +99,7 @@ public class CPU {
             // --------------------------------------------------------------------------------------------------
             // FASE DE FETCH
             if (legal(pc)) { // pc valido
-                var memadd = getMemAddr();
+                var memadd = getMemAddr(pc);
                 ir = m[memadd];  // <<<<<<<<<<<< AQUI faz FETCH - busca posicao da memoria apontada por pc, guarda em ir
                              // resto é dump de debug
                 if (debug) {

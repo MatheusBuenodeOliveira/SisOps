@@ -17,7 +17,13 @@ public class Sistema {
     }
 
     public void run() {
-        so.utils.loadAndExec(progs.retrieveProgram("fatorialV2"));
+        so.processManager.createProcess(progs.retrieveProgram("fatorialV2"));
+        so.processManager.createProcess(progs.retrieveProgram("fatorialV2"));
+
+        System.out.println("Starting execution with Round Robin scheduler");
+        so.processManager.run();
+
+        System.out.println("All processes completed");
     }
 
     public static void main(String args[]) {
