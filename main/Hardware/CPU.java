@@ -69,9 +69,9 @@ public class CPU {
         return true;
     }
 
-    public void setContext(List<Page> _processPage) {                 // usado para setar o contexto da cpu para rodar um processo
+    public void setContext(List<Page> _processPage, int pcCotnext) {                 // usado para setar o contexto da cpu para rodar um processo
         processPage = _processPage;                                       // [ nesta versao é somente colocar o PC na posicao 0 ]
-        pc = 0;                                     // pc cfe endereco logico
+        pc = pcCotnext;                                     // pc cfe endereco logico
         irpt = Interrupts.noInterrupt;                // reset da interrupcao registrada
     }
 
@@ -91,8 +91,8 @@ public class CPU {
         return processPage.get(pageIndex).pageStart + offset;
     }
 
-    public void run() {                               // execucao da CPU supoe que o contexto da CPU, vide acima, 
-                                                      // esta devidamente setado
+    public void run() {                               // execucao da CPU supoe que o contexto da CPU, vide acima,
+                                                        // esta devidamente setado
         cpuStop = false;
         while (!cpuStop) {      // ciclo de instrucoes. acaba cfe resultado da exec da instrucao, veja cada caso.
 

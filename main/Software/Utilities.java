@@ -47,14 +47,14 @@ public class Utilities {
         }
     }
 
-    public void loadAndExec(Program pg) {
-        var pages = loadProgram(pg.image);
-        System.out.println("---------------------------------- programa carregado na memoria");
-        dump(0, memoryManager.mem.pos.length - 900);
-        hw.cpu.setContext(pages);
-        System.out.println("---------------------------------- inicia execucao ");
-        hw.cpu.run();
-        System.out.println("---------------------------------- memoria após execucao ");
-        dump(0, memoryManager.mem.pos.length - 900);
-    }
+//    public void loadAndExec(Program pg) {
+//        var pages = loadProgram(pg.image);
+//        System.out.println("---------------------------------- programa carregado na memoria");
+//        dump(0, memoryManager.mem.pos.length - 900);
+//        hw.cpu.setContext(pages);
+//        System.out.println("---------------------------------- inicia execucao ");
+//        hw.cpu.run();
+//        System.out.println("---------------------------------- memoria após execucao ");
+//        dump(0, memoryManager.mem.pos.length - 900);
+//    }
 }
