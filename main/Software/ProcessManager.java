@@ -269,7 +269,7 @@ public class ProcessManager {
                         // verifica se o time slice terminou
                         if (instructionsExecuted >= instructions) {
                             // Gera a interrupção de relógio
-                            interruptHandler.handle(Interrupts.intTimer);
+                            cpu.setInterupt(Interrupts.intTimer);
                             break;
                         }
                     }

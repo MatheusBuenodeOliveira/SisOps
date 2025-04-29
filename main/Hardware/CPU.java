@@ -69,6 +69,10 @@ public class CPU {
         return true;
     }
 
+    public void setInterupt(Interrupts irpt){
+        this.irpt = irpt;
+    }
+
     public void setContext(List<Page> _processPage, int pcCotnext) {                 // usado para setar o contexto da cpu para rodar um processo
         processPage = _processPage;                                       // [ nesta versao é somente colocar o PC na posicao 0 ]
         pc = pcCotnext;                                     // pc cfe endereco logico
