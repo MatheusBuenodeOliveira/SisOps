@@ -36,7 +36,6 @@ public class ProcessManager {
         public ArrayList<Page> pages; // lista de páginas do processo
         public int[] registers; // registradores da última vez que ele rodou
         public ProcessState state; // estado atual do processo
-        public IORequest pendingIO; // estado de IO do processo
 
         public PCB(int pid, ArrayList<Page> pages) {
             this.pid = pid;
@@ -44,7 +43,6 @@ public class ProcessManager {
             this.pc = 0;
             this.registers = new int[10];
             this.state = ProcessState.READY;
-            this.pendingIO = null;
         }
 
         public void saveContext() {
@@ -60,26 +58,6 @@ public class ProcessManager {
                 cpu.reg[i] = this.registers[i];
             }
             cpu.setContext(this.pages, this.pc);
-        }
-    }
-
-    public class IORequest {
-        public enum IOType { READ, WRITE }
-
-        public IOType type;
-        public int address;
-        public int value; // For write operations
-        public int completionTime;
-
-        public IORequest(IOType type, int address) {
-            this.type = type;
-            this.address = address;
-            this.completionTime = 0; // Will be set when scheduled
-        }
-
-        public IORequest(IOType type, int address, int value) {
-            this(type, address);
-            this.value = value;
         }
     }
 
@@ -101,10 +79,108 @@ public class ProcessManager {
         return pcb;
     }
 
+    //Executa um processo especifico
+    public void executeProcess(int pid) {
+        PCB process = getProcess(pid);
+        if (process == null) {
+            System.out.println("Process not found: " + pid);
+            return;
+        }
+
+        // Salva o contexto do processo atual
+        if (runningProcess != null) {
+            runningProcess.saveContext();
+            if (runningProcess.state == ProcessState.RUNNING) {
+                runningProcess.state = ProcessState.READY;
+                readyQueue.add(runningProcess);
+            }
+        }
+
+        // remove ele da fila de pronto pois agora ta em state running
+        readyQueue.remove(process);
+
+        // Setta o processo para rodar
+        runningProcess = process;
+        runningProcess.state = ProcessState.RUNNING;
+        runningProcess.loadContext();
+
+        // roda ele
+        cpu.run();
+
+        // coloca ele na fila de prontos
+        if (runningProcess != null && runningProcess.state == ProcessState.RUNNING) {
+            runningProcess.saveContext();
+            runningProcess.state = ProcessState.READY;
+            readyQueue.add(runningProcess);
+            runningProcess = null;
+        }
+    }
+
     // Generate a unique process ID
     private int nextPID = 1;
     private int generatePID() {
         return nextPID++;
+    }
+
+    //pega um processo especifico
+    public PCB getProcess(int pid) {
+        for (PCB pcb : readyQueue) {
+            if (pcb.pid == pid) {
+                return pcb;
+            }
+        }
+        return null;
+    }
+
+    //PEGA TODOS OS PROCESSOS
+    public ArrayList<PCB> getAllProcesses() {
+        var temp = new ArrayList<PCB>(readyQueue);
+
+        if (runningProcess != null)
+            temp.add(runningProcess);
+
+        return temp;
+    }
+
+    // REMOVER PROCESSO
+    public boolean removeProcess(int pid) {
+        PCB processToRemove = null;
+
+        // VERIFICA SE TA RODANDO
+        if (runningProcess != null && runningProcess.pid == pid) {
+            processToRemove = runningProcess;
+            runningProcess = null;
+        } else {
+            // PROCURA NA READY QUEUE
+            for (PCB pcb : readyQueue) {
+                if (pcb.pid == pid) {
+                    processToRemove = pcb;
+                    readyQueue.remove(pcb);
+                    break;
+                }
+            }
+
+            // If not found, check blocked queue
+            if (processToRemove == null) {
+                for (PCB pcb : blockedQueue) {
+                    if (pcb.pid == pid) {
+                        processToRemove = pcb;
+                        blockedQueue.remove(pcb);
+                        break;
+                    }
+                }
+            }
+        }
+
+        if (processToRemove != null) {
+            // Free memory
+            for (Page page : processToRemove.pages) {
+                page.inUse = false;
+            }
+            return true;
+        }
+
+        return false;
     }
 
     // ESCALONA O NOVO PROCESSO (Round Robin)
@@ -126,45 +202,13 @@ public class ProcessManager {
             runningProcess.state = ProcessState.RUNNING;
             //CARREGA O CONTEXTO NA CPU
             runningProcess.loadContext();
+            //readyQueue.remove(runningProcess);
             System.out.println("Scheduled process PID: " + runningProcess.pid + " PC: " + runningProcess.pc);
         } else {
             runningProcess = null;
             System.out.println("No processes to schedule");
         }
     }
-
-    // Block the running process for I/O
-    public void blockForIO(IORequest request) {
-        if (runningProcess != null) {
-            System.out.println("Process PID: " + runningProcess.pid + " blocked for I/O");
-            runningProcess.saveContext();
-            runningProcess.state = ProcessState.BLOCKED;
-            runningProcess.pendingIO = request;
-
-            // Set I/O completion time (simulated)
-            int currentTime = getCurrentTime();
-            request.completionTime = currentTime + 5;
-
-            blockedQueue.add(runningProcess);
-            runningProcess = null;
-
-            // Schedule next process
-            schedule();
-        }
-    }
-
-    // Simulate system clock for I/O timing
-    private int systemClock = 0;
-    private int getCurrentTime() {
-        return systemClock;
-    }
-
-    // Increment system clock
-    public void tickClock() {
-        systemClock++;
-    }
-
-
 
     // Handle timer interrupt - called from InterruptHandling
     public void handleTimerInterrupt() {
@@ -178,14 +222,12 @@ public class ProcessManager {
         if (runningProcess == null && !readyQueue.isEmpty()) {
             schedule();
         }
-
         // RODAR O PROCESSO ATÉ TERMINAR OU RECEBER UMA INTERRUPÇÃO
         while (hasActiveProcesses()) {
-            tickClock();
 
             if (runningProcess != null) {
                 // Vai iniciar a tread separada que manda a interrupção de relógio
-                TimerInterrupt timer = new TimerInterrupt(this, TIME_SLICE);
+                TimerInterrupt timer = new TimerInterrupt();
                 timer.start();
 
                 // Coloca o processo para rodar
@@ -195,38 +237,20 @@ public class ProcessManager {
                 //mata a tread
                 timer.stopTimer();
 
-                // If process terminated on its own, schedule next process
-                if (runningProcess != null && runningProcess.state == ProcessState.RUNNING) {
-                    // Process didn't terminate but was interrupted
-                    // The timer or I/O interrupt will have already scheduled the next process
-                }
             } else if (!readyQueue.isEmpty()) {
                 //se houver processos para escalonar escalona ele
                 schedule();
-            } else {
-                // Just wait for I/O completions
-                try {
-                    Thread.sleep(100); // Small delay to avoid busy waiting
-                } catch (InterruptedException e) {
-                    e.printStackTrace();
-                }
             }
         }
     }
 
-    // Handle process termination
+    // termina o processo
     public void terminateRunningProcess() {
         if (runningProcess != null) {
             System.out.println("Process PID: " + runningProcess.pid + " terminated");
 
-            // Free memory
-            for (Page page : runningProcess.pages) {
-                page.inUse = false;
-            }
+            removeProcess(runningProcess.pid);
 
-            runningProcess = null;
-
-            // Schedule next process
             if (!readyQueue.isEmpty()) {
                 schedule();
             }
@@ -239,13 +263,10 @@ public class ProcessManager {
     }
 
     private class TimerInterrupt extends Thread {
-        private ProcessManager pm;
-        private int instructions;
+
         private boolean running;
 
-        public TimerInterrupt(ProcessManager pm, int instructions) {
-            this.pm = pm;
-            this.instructions = instructions;
+        public TimerInterrupt() {
             this.running = true;
         }
 
@@ -255,27 +276,14 @@ public class ProcessManager {
 
         @Override
         public void run() {
-            int startPC = cpu.pc;
-            int instructionsExecuted = 0;
-
             try {
-                while (running) {
-                    // olhando o pc para ver se ele rodou instruções
-                    int currentPC = cpu.pc;
-                    if (currentPC != startPC) {
-                        instructionsExecuted++;
-                        startPC = currentPC;
+                // Simply wait for the specified time slice
+                Thread.sleep(TIME_SLICE);
 
-                        // verifica se o time slice terminou
-                        if (instructionsExecuted >= instructions) {
-                            // Gera a interrupção de relógio
-                            cpu.setInterupt(Interrupts.intTimer);
-                            break;
-                        }
-                    }
-
-                    // pequeno delay
-                    Thread.sleep(1);
+                // If still running after the sleep, generate the timer interrupt
+                if (running) {
+                    // Gera a interrupção de relógio
+                    cpu.setInterupt(Interrupts.intTimer);
                 }
             } catch (InterruptedException e) {
                 e.printStackTrace();

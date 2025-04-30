@@ -41,6 +41,8 @@ public class Utilities {
     public void dump(int ini, int fim) {
         Word[] m = hw.mem.pos;
         for (int i = ini; i < fim; i++) {
+            if(i % 8 == 0)
+                System.out.println("Frame :"+ i / 8);
             System.out.print(i);
             System.out.print(":  ");
             dump(m[i] != null ? m[i] : new Word(Opcode.DATA,-1,-1,-1));

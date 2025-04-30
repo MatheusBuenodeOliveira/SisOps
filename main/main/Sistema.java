@@ -8,15 +8,17 @@ public class Sistema {
     public HW hw;
     public SO so;
     public Programs progs;
+    public Shell shell;
 
     public Sistema(int tamMem) {
         hw = new HW(tamMem);
         so = new SO(hw);
         hw.cpu.setUtilities(so.utils);
         progs = new Programs();
+        shell = new Shell(this);
     }
 
-    public void run() {
+    public void runDemo() {
         so.processManager.createProcess(progs.retrieveProgram("fatorialV2"));
         so.processManager.createProcess(progs.retrieveProgram("fatorialV2"));
 
@@ -26,8 +28,14 @@ public class Sistema {
         System.out.println("All processes completed");
     }
 
+    public void runShell() {
+        shell.run();
+    }
+
     public static void main(String args[]) {
         Sistema s = new Sistema(1024);
-        s.run();
+
+        // s.runDemo();  // Run da demo
+        s.runShell();
     }
 }
