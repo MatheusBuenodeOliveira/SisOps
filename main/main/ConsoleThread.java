@@ -42,6 +42,13 @@ public class ConsoleThread extends Thread {
                     return;
                 }
                 dumpProcess(Integer.parseInt(parts[1]));
+            } else if (command.startsWith("mdump")) {
+                var parts = command.split(" ");
+                if (parts.length < 3) {
+                    System.out.println("Uso: mdump <inicio da memoria> <fim da memoria>");
+                    return;
+                }
+                dumpMemory(Integer.parseInt(parts[1]),Integer.parseInt(parts[2])) ;
             } else if (command.startsWith("exec")) {
                 executeProgram(command);
             } else if (command.equals("mem")) {
@@ -65,6 +72,7 @@ public class ConsoleThread extends Thread {
         System.out.println("Comandos disponíveis:");
         System.out.println("  help         - Mostra esta ajuda");
         System.out.println("  list         - Lista programas disponíveis");
+        System.out.println("  mdump[i,f]    - Faz o dump da memoria");
         System.out.println("  dump [pid]   - Faz o dump de um processo especificado");
         System.out.println("  exec [prog]  - Executa um programa");
         System.out.println("  ps           - Lista processos em execução");
@@ -110,8 +118,12 @@ public class ConsoleThread extends Thread {
         }
     }
 
+    private void dumpMemory(int i, int f){
+        sistema.so.utils.dump(i,f);
+    }
+
     private void executeProgram(String command) {
-        String[] parts = command.split("\\s+");
+        String[] parts = command.split(" ");
         if (parts.length != 2) {
             System.out.println("Uso: exec [nome_do_programa]");
             return;
@@ -128,6 +140,7 @@ public class ConsoleThread extends Thread {
         var pcb = processManager.createProcess(program);
         if (pcb != null) {
             System.out.println("Processo criado com PID: " + pcb.pid + " para o programa: " + programName);
+            processManager.startSchedulerThread();
         } else {
             System.out.println("Falha ao criar processo para o programa: " + programName);
         }

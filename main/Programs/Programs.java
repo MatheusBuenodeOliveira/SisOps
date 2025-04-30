@@ -67,7 +67,17 @@ public class Programs {
 							new Word(Opcode.LDI, 0, -1, 5),
 							new Word(Opcode.STOP, -1, -1, -1)
 					}
-			)
+			),
+			new Program("tmini",
+					new Word[]{
+							new Word(Opcode.LDI, 0, -1, 5),
+							new Word(Opcode.LDI, 0, -1, 5),
+							new Word(Opcode.LDI, 0, -1, 5),
+							new Word(Opcode.LDI, 0, -1, 5),
+							new Word(Opcode.LDI, 0, -1, 5),
+							new Word(Opcode.STOP, -1, -1, -1)
+					}
+			),
 
     };
 }
