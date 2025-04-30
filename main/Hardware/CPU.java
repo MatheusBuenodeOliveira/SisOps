@@ -91,7 +91,7 @@ public class CPU {
             return -1;
         }
 
-        // Get the physical page and add the offset
+        // pega o enderoço fisico
         return processPage.get(pageIndex).pageStart + offset;
     }
 
@@ -99,7 +99,11 @@ public class CPU {
                                                         // esta devidamente setado
         cpuStop = false;
         while (!cpuStop) {      // ciclo de instrucoes. acaba cfe resultado da exec da instrucao, veja cada caso.
-
+            try {
+                Thread.sleep(500);
+            } catch (InterruptedException e) {
+                throw new RuntimeException(e);
+            }
             // --------------------------------------------------------------------------------------------------
             // FASE DE FETCH
             if (legal(pc)) { // pc valido
