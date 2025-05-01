@@ -374,8 +374,8 @@ public class ProcessManager {
         public void run() {
             try {
                 while (running) {
-                    //Thread.sleep(0,1);
-                    Thread.sleep(5000);
+                    Thread.sleep(0,1);
+                    //Thread.sleep(5000);
                     cpu.setInterupt(Interrupts.intTimer);
                     break;
                 }
