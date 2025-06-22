@@ -28,6 +28,11 @@ public class SysCallHandling {
             processManager.handleIOAndblockRunningProcess(hw.cpu.reg[9]);
         } else if (hw.cpu.reg[8] == 2) {
             System.out.println("-------------------------------------");
+            System.out.println("OUT: " + hw.mem.pos[hw.cpu.getMemAddr(hw.cpu.reg[9])].p);
+            System.out.println("-------------------------------------");
+            hw.cpu.pc++;
+        } else if (hw.cpu.reg[8] == 3) {
+            System.out.println("-------------------------------------");
             System.out.println("OUT: " + hw.cpu.reg[9]);
             System.out.println("-------------------------------------");
             hw.cpu.pc++;

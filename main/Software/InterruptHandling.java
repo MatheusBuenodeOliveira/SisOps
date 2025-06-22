@@ -18,17 +18,62 @@ public class InterruptHandling {
     }
 
     public void handle(ConcurrentLinkedQueue<Interrupts> irpt) {
-        for (Interrupts intrp : irpt){
-            System.out.println("Interrupcao " + irpt + "   pc: " + hw.cpu.pc);
+        for (Interrupts intrp : irpt) {
+            System.out.println("Interrupcao " + intrp + "   pc: " + hw.cpu.pc);
 
-            if (intrp == Interrupts.intTimer && processManager != null) {
-                processManager.handleTimerInterrupt();
+            switch (intrp) {
+                case intTimer:
+                    if (processManager != null) {
+                        processManager.handleTimerInterrupt();
+                    }
+                    break;
+
+                case IOReturn:
+                    if (processManager != null) {
+                        processManager.unblockProcessFromIO(hw.cpu.ReturningOfIO.poll());
+                    }
+                    break;
+
+                case PageFault:
+                    if (processManager != null) {
+                        processManager.handlePageFault();
+                    }
+                    break;
+
+                case intEnderecoInvalido:
+                    System.out.println("ERRO: Endereço de memória inválido!");
+                    if (processManager != null) {
+                        processManager.terminateRunningProcess();
+                    }
+                    break;
+
+                case intInstrucaoInvalida:
+                    System.out.println("ERRO: Instrução inválida!");
+                    if (processManager != null) {
+                        processManager.terminateRunningProcess();
+                    }
+                    break;
+
+                case intOverflow:
+                    System.out.println("ERRO: Overflow aritmético!");
+                    if (processManager != null) {
+                        processManager.terminateRunningProcess();
+                    }
+                    break;
+
+                case intSTOP:
+                    System.out.println("Instrução STOP executada.");
+                    if (processManager != null) {
+                        processManager.terminateRunningProcess();
+                    }
+                    break;
+
+                default:
+                    System.out.println("Interrupção não tratada: " + intrp);
+                    break;
             }
-            if(intrp == Interrupts.IOReturn){
-                processManager.unblockProcessFromIO(hw.cpu.ReturningOfIO.poll());
-            }
+
             irpt.remove(intrp);
         }
     }
-
 }

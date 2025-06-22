@@ -10,7 +10,7 @@ import Software.Opcode;
 public class CPU {
     private int maxInt; // valores maximo e minimo para inteiros nesta cpu
     private int minInt;
-                        // CONTEXTO da CPU ...
+    // CONTEXTO da CPU ...
     public int pc;     // ... composto de program counter,
     private Word ir;    // instruction register,
     public int[] reg;  // registradores da CPU
@@ -22,14 +22,14 @@ public class CPU {
     // nas proximas versoes isto pode modificar
     public String ProcessName;
     private Word[] m;   // m é o array de memória "física", CPU tem uma ref a m para acessar
-
+    public int pagedFaultedAdress;
     private InterruptHandling ih;    // significa desvio para rotinas de tratamento de Int - se int ligada, desvia
     private SysCallHandling sysCall; // significa desvio para tratamento de chamadas de sistema
 
     private boolean cpuStop;    // flag para parar CPU - caso de interrupcao que acaba o processo, ou chamada stop - 
-                                // nesta versao acaba o sistema no fim do prog
+    // nesta versao acaba o sistema no fim do prog
 
-                                // auxilio aa depuração
+    // auxilio aa depuração
     private boolean debug;      // se true entao mostra cada instrucao em execucao
     private Utilities u;        // para debug (dump)
     private List<Page> processPage;
@@ -42,7 +42,6 @@ public class CPU {
         irpt = new ConcurrentLinkedQueue<>();
         ReturningOfIO = new ConcurrentLinkedQueue<>();
         debug = _debug;            // se true, print da instrucao em execucao
-
     }
 
     public void setAddressOfHandlers(InterruptHandling _ih, SysCallHandling _sysCall) {
@@ -54,10 +53,10 @@ public class CPU {
         u = _u;                     // aponta para rotinas utilitárias - fazer dump da memória na tela
     }
 
-                                   // verificação de enderecamento 
-    private boolean legal(int e) { // todo acesso a memoria tem que ser verificado se é válido - 
-                                   // aqui no caso se o endereco é um endereco valido em toda memoria
-        if (e >= 0 && e < m.length) {
+    // verificação de enderecamento
+    private boolean legal(int e) { // todo acesso a memoria tem que ser verificado se é válido -
+        // aqui no caso se o endereco é um endereco valido em toda memoria
+        if (e >= 0 /*&& e < m.length*/) {
             return true;
         } else {
             irpt.add(Interrupts.intEnderecoInvalido);    // se nao for liga interrupcao no meio da exec da instrucao
@@ -91,17 +90,62 @@ public class CPU {
         int offset = logicalAddr % 8;
 
         // verifica se o endereço é válido
-        if (pageIndex >= processPage.size()) {
-            irpt.add(Interrupts.intEnderecoInvalido);
-            return -1;
+//        if (pageIndex >= processPage.size()) {
+//            irpt.add(Interrupts.intEnderecoInvalido);
+//            return -1;
+//        }
+
+        if(!processPage.get(pageIndex).isInMemory){
+            pagedFaultedAdress = logicalAddr;
+            irpt.add(Interrupts.PageFault);
+            return -1; // Retorna -1 para indicar page fault
         }
 
-        // pega o enderoço fisico
+        // pega o endereço físico
         return processPage.get(pageIndex).pageStart + offset;
     }
 
+    /**
+     * Método auxiliar para verificar se um acesso de memória é válido
+     * Retorna true se o endereço físico foi obtido com sucesso
+     * Retorna false se houve page fault ou endereço inválido
+     */
+    private boolean checkMemoryAccess(int logicalAddr) {
+        return getMemAddr(logicalAddr) != -1;
+    }
+
+    /**
+     * Método auxiliar para acessar memória de forma segura para leitura
+     * Retorna o valor se sucesso, ou gera interrupção se page fault
+     */
+    private int safeMemoryRead(int logicalAddr) {
+        int physicalAddr = getMemAddr(logicalAddr);
+        if (physicalAddr == -1) {
+            return -1; // Page fault já foi adicionado à fila de interrupções
+        }
+        return m[physicalAddr].p;
+    }
+
+    private boolean safeMemoryWrite(int logicalAddr, int value) {
+        int physicalAddr = getMemAddr(logicalAddr);
+        if (physicalAddr == -1) {
+            return false; // Page fault já foi adicionado à fila de interrupções
+        }
+        m[physicalAddr].opc = Opcode.DATA;
+        m[physicalAddr].p = value;
+        return true;
+    }
+
+    private Word safeMemoryFetchWord(int logicalAddr) {
+        int physicalAddr = getMemAddr(logicalAddr);
+        if (physicalAddr == -1) {
+            return null; // Page fault já foi adicionado à fila de interrupções
+        }
+        return m[physicalAddr];
+    }
+
     public void run() {                               // execucao da CPU supoe que o contexto da CPU, vide acima,
-                                                        // esta devidamente setado
+        // esta devidamente setado
         cpuStop = false;
         while (!cpuStop) {      // ciclo de instrucoes. acaba cfe resultado da exec da instrucao, veja cada caso.
             try {
@@ -113,202 +157,268 @@ public class CPU {
             // FASE DE FETCH
             if (legal(pc)) { // pc valido
                 var memadd = getMemAddr(pc);
-                ir = m[memadd];  // <<<<<<<<<<<< AQUI faz FETCH - busca posicao da memoria apontada por pc, guarda em ir
-                             // resto é dump de debug
-                if (debug && ProcessName != "NOP") {
-                    System.out.print("                                              regs: ");
-                    for (int i = 0; i < 10; i++) {
-                        System.out.print(" r[" + i + "]:" + reg[i]);
-                    }
-                    ;
-                    System.out.println();
-                }
-                if (debug && ProcessName != "NOP") {
-                    System.out.print("                      pc: " + pc + "       exec: ");
-                    u.dump(ir);
-                }else{
-                    System.out.println("nop");
-                    System.out.println("                      pc: " + pc + "       exec: ");
-                }
-
-            // --------------------------------------------------------------------------------------------------
-            // FASE DE EXECUCAO DA INSTRUCAO CARREGADA NO ir
-                switch (ir.opc) {       // conforme o opcode (código de operação) executa
-
-                    // Instrucoes de Busca e Armazenamento em Memoria
-                    case LDI: // Rd ← k        veja a tabela de instrucoes do HW simulado para entender a semantica da instrucao
-                        reg[ir.ra] = ir.p;
-                        pc++;
-                        break;
-                    case LDD: // Rd <- [A]
-                        if (legal(ir.p)) {
-                            reg[ir.ra] = m[ir.p].p;
-                            pc++;
-                        }
-                        break;
-                    case LDX: // RD <- [RS] // NOVA
-                        if (legal(reg[ir.rb])) {
-                            reg[ir.ra] = m[reg[ir.rb]].p;
-                            pc++;
-                        }
-                        break;
-                    case STD: // [A] ← Rs
-                        if (legal(ir.p)) {
-                            m[ir.p].opc = Opcode.DATA;
-                            m[ir.p].p = reg[ir.ra];
-                            pc++;
-                            if (debug) 
-                                {   System.out.print("                                  ");   
-                                    u.dump(ir.p,ir.p+1);							
-                                }
-                            }
-                        break;
-                    case STX: // [Rd] ←Rs
-                        if (legal(reg[ir.ra])) {
-                            m[reg[ir.ra]].opc = Opcode.DATA;
-                            m[reg[ir.ra]].p = reg[ir.rb];
-                            pc++;
+                if (memadd == -1) {
+                    // Page fault ou endereço inválido durante FETCH - não executa a instrução
+                    // A interrupção já foi adicionada à fila, vai ser tratada no final do ciclo
+                } else {
+                    ir = m[memadd];  // <<<<<<<<<<<< AQUI faz FETCH - busca posicao da memoria apontada por pc, guarda em ir
+                    // resto é dump de debug
+                    if (debug && ProcessName != "NOP") {
+                        System.out.print("                                              regs: ");
+                        for (int i = 0; i < 10; i++) {
+                            System.out.print(" r[" + i + "]:" + reg[i]);
                         }
                         ;
-                        break;
-                    case MOVE: // RD <- RS
-                        reg[ir.ra] = reg[ir.rb];
-                        pc++;
-                        break;
-                    // Instrucoes Aritmeticas
-                    case ADD: // Rd ← Rd + Rs
-                        reg[ir.ra] = reg[ir.ra] + reg[ir.rb];
-                        testOverflow(reg[ir.ra]);
-                        pc++;
-                        break;
-                    case ADDI: // Rd ← Rd + k
-                        reg[ir.ra] = reg[ir.ra] + ir.p;
-                        testOverflow(reg[ir.ra]);
-                        pc++;
-                        break;
-                    case SUB: // Rd ← Rd - Rs
-                        reg[ir.ra] = reg[ir.ra] - reg[ir.rb];
-                        testOverflow(reg[ir.ra]);
-                        pc++;
-                        break;
-                    case SUBI: // RD <- RD - k // NOVA
-                        reg[ir.ra] = reg[ir.ra] - ir.p;
-                        testOverflow(reg[ir.ra]);
-                        pc++;
-                        break;
-                    case MULT: // Rd <- Rd * Rs
-                        reg[ir.ra] = reg[ir.ra] * reg[ir.rb];
-                        testOverflow(reg[ir.ra]);
-                        pc++;
-                        break;
+                        System.out.println();
+                    }
+                    if (debug && ProcessName != "NOP") {
+                        System.out.print("                      pc: " + pc + "       exec: ");
+                        u.dump(ir);
+                    }else{
+                        System.out.println("nop");
+                        System.out.println("                      pc: " + pc + "       exec: ");
+                    }
 
-                    // Instrucoes JUMP
-                    case JMP: // PC <- k
-                        pc = ir.p;
-                        break;
-                    case JMPIM: // PC <- [A]
-                              pc = m[ir.p].p;
-                        break;
-                    case JMPIG: // If Rc > 0 Then PC ← Rs Else PC ← PC +1
-                        if (reg[ir.rb] > 0) {
-                            pc = reg[ir.ra];
-                        } else {
+                    // --------------------------------------------------------------------------------------------------
+                    // FASE DE EXECUCAO DA INSTRUCAO CARREGADA NO ir
+                    switch (ir.opc) {       // conforme o opcode (código de operação) executa
+
+                        // Instrucoes de Busca e Armazenamento em Memoria
+                        case LDI: // Rd ← k        veja a tabela de instrucoes do HW simulado para entender a semantica da instrucao
+                            reg[ir.ra] = ir.p;
                             pc++;
-                        }
-                        break;
-                    case JMPIGK: // If RC > 0 then PC <- k else PC++
-                        if (reg[ir.rb] > 0) {
+                            break;
+
+                        case LDD: // Rd <- [A]
+                            if (legal(ir.p)) {
+                                int value = safeMemoryRead(ir.p);
+                                if (value != -1) { // Sucesso na leitura
+                                    reg[ir.ra] = value;
+                                    pc++;
+                                }
+                                // Se houve page fault, a interrupção já foi adicionada, não incrementa PC
+                            }
+                            break;
+
+                        case LDX: // RD <- [RS] // NOVA
+                            if (legal(reg[ir.rb])) {
+                                int value = safeMemoryRead(reg[ir.rb]);
+                                if (value != -1) { // Sucesso na leitura
+                                    reg[ir.ra] = value;
+                                    pc++;
+                                }
+                                // Se houve page fault, a interrupção já foi adicionada, não incrementa PC
+                            }
+                            break;
+
+                        case STD: // [A] ← Rs
+                            if (legal(ir.p)) {
+                                if (safeMemoryWrite(ir.p, reg[ir.ra])) {
+                                    pc++;
+                                    if (debug) {
+                                        System.out.print("                                  ");
+                                        u.dump(getMemAddr(ir.p), getMemAddr(ir.p - 1 ));
+                                    }
+                                }
+                                // Se houve page fault, a interrupção já foi adicionada, não incrementa PC
+                            }
+                            break;
+
+                        case STX: // [Rd] ←Rs
+                            if (legal(reg[ir.ra])) {
+                                if (safeMemoryWrite(reg[ir.ra], reg[ir.rb])) {
+                                    pc++;
+                                }
+                                // Se houve page fault, a interrupção já foi adicionada, não incrementa PC
+                            }
+                            break;
+
+                        case MOVE: // RD <- RS
+                            reg[ir.ra] = reg[ir.rb];
+                            pc++;
+                            break;
+
+                        // Instrucoes Aritmeticas
+                        case ADD: // Rd ← Rd + Rs
+                            reg[ir.ra] = reg[ir.ra] + reg[ir.rb];
+                            testOverflow(reg[ir.ra]);
+                            pc++;
+                            break;
+
+                        case ADDI: // Rd ← Rd + k
+                            reg[ir.ra] = reg[ir.ra] + ir.p;
+                            testOverflow(reg[ir.ra]);
+                            pc++;
+                            break;
+
+                        case SUB: // Rd ← Rd - Rs
+                            reg[ir.ra] = reg[ir.ra] - reg[ir.rb];
+                            testOverflow(reg[ir.ra]);
+                            pc++;
+                            break;
+
+                        case SUBI: // RD <- RD - k // NOVA
+                            reg[ir.ra] = reg[ir.ra] - ir.p;
+                            testOverflow(reg[ir.ra]);
+                            pc++;
+                            break;
+
+                        case MULT: // Rd <- Rd * Rs
+                            reg[ir.ra] = reg[ir.ra] * reg[ir.rb];
+                            testOverflow(reg[ir.ra]);
+                            pc++;
+                            break;
+
+                        // Instrucoes JUMP
+                        case JMP: // PC <- k
                             pc = ir.p;
-                        } else {
-                            pc++;
-                        }
-                        break;
-                    case JMPILK: // If RC < 0 then PC <- k else PC++
-                        if (reg[ir.rb] < 0) {
-                            pc = ir.p;
-                        } else {
-                            pc++;
-                        }
-                        break;
-                    case JMPIEK: // If RC = 0 then PC <- k else PC++
-                        if (reg[ir.rb] == 0) {
-                            pc = ir.p;
-                        } else {
-                            pc++;
-                        }
-                        break;
-                    case JMPIL: // if Rc < 0 then PC <- Rs Else PC <- PC +1
-                        if (reg[ir.rb] < 0) {
-                            pc = reg[ir.ra];
-                        } else {
-                            pc++;
-                        }
-                        break;
-                    case JMPIE: // If Rc = 0 Then PC <- Rs Else PC <- PC +1
-                        if (reg[ir.rb] == 0) {
-                            pc = reg[ir.ra];
-                        } else {
-                            pc++;
-                        }
-                        break;
-                    case JMPIGM: // If RC > 0 then PC <- [A] else PC++
-                        if (legal(ir.p)){
+                            break;
+
+                        case JMPIM: // PC <- [A]
+                            int jumpAddr = safeMemoryRead(ir.p);
+                            if (jumpAddr != -1) { // Sucesso na leitura
+                                pc = jumpAddr;
+                            }
+                            // Se houve page fault, a interrupção já foi adicionada, não modifica PC
+                            break;
+
+                        case JMPIG: // If Rc > 0 Then PC ← Rs Else PC ← PC +1
                             if (reg[ir.rb] > 0) {
-                               pc = m[ir.p].p;
+                                pc = reg[ir.ra];
                             } else {
-                              pc++;
-                           }
-                        }
-                        break;
-                    case JMPILM: // If RC < 0 then PC <- k else PC++
-                        if (reg[ir.rb] < 0) {
-                            pc = m[ir.p].p;
-                        } else {
-                            pc++;
-                        }
-                        break;
-                    case JMPIEM: // If RC = 0 then PC <- k else PC++
-                        if (reg[ir.rb] == 0) {
-                            pc = m[ir.p].p;
-                        } else {
-                            pc++;
-                        }
-                        break;
-                    case JMPIGT: // If RS>RC then PC <- k else PC++
-                        if (reg[ir.ra] > reg[ir.rb]) {
-                            pc = ir.p;
-                        } else {
-                            pc++;
-                        }
-                        break;
+                                pc++;
+                            }
+                            break;
 
-                    case DATA: // pc está sobre área supostamente de dados
-                        irpt.add(Interrupts.intInstrucaoInvalida);
-                        break;
+                        case JMPIGK: // If RC > 0 then PC <- k else PC++
+                            if (reg[ir.rb] > 0) {
+                                pc = ir.p;
+                            } else {
+                                pc++;
+                            }
+                            break;
 
-                    // Chamadas de sistema
-                    case SYSCALL:
+                        case JMPILK: // If RC < 0 then PC <- k else PC++
+                            if (reg[ir.rb] < 0) {
+                                pc = ir.p;
+                            } else {
+                                pc++;
+                            }
+                            break;
 
-                        sysCall.handle(); // <<<<< aqui desvia para rotina de chamada de sistema, no momento so
-                                            // temos IO
-                        break;
+                        case JMPIEK: // If RC = 0 then PC <- k else PC++
+                            if (reg[ir.rb] == 0) {
+                                pc = ir.p;
+                            } else {
+                                pc++;
+                            }
+                            break;
 
-                    case STOP: // por enquanto, para execucao
-                        sysCall.stop();
-                        cpuStop = true;
-                        break;
+                        case JMPIL: // if Rc < 0 then PC <- Rs Else PC <- PC +1
+                            if (reg[ir.rb] < 0) {
+                                pc = reg[ir.ra];
+                            } else {
+                                pc++;
+                            }
+                            break;
 
-                    // Inexistente
-                    default:
-                        irpt.add(Interrupts.intInstrucaoInvalida);
-                        break;
+                        case JMPIE: // If Rc = 0 Then PC <- Rs Else PC <- PC +1
+                            if (reg[ir.rb] == 0) {
+                                pc = reg[ir.ra];
+                            } else {
+                                pc++;
+                            }
+                            break;
+
+                        case JMPIGM: // If RC > 0 then PC <- [A] else PC++
+                            if (legal(ir.p)) {
+                                if (reg[ir.rb] > 0) {
+                                    int jumpAddr2 = safeMemoryRead(ir.p);
+                                    if (jumpAddr2 != -1) { // Sucesso na leitura
+                                        pc = jumpAddr2;
+                                    }
+                                    // Se houve page fault, não modifica PC
+                                } else {
+                                    pc++;
+                                }
+                            }
+                            break;
+
+                        case JMPILM: // If RC < 0 then PC <- [A] else PC++
+                            if (reg[ir.rb] < 0) {
+                                int jumpAddr3 = safeMemoryRead(ir.p);
+                                if (jumpAddr3 != -1) { // Sucesso na leitura
+                                    pc = jumpAddr3;
+                                }
+                                // Se houve page fault, não modifica PC
+                            } else {
+                                pc++;
+                            }
+                            break;
+
+                        case JMPIEM: // If RC = 0 then PC <- [A] else PC++
+                            if (reg[ir.rb] == 0) {
+                                int jumpAddr4 = safeMemoryRead(ir.p);
+                                if (jumpAddr4 != -1) { // Sucesso na leitura
+                                    pc = jumpAddr4;
+                                }
+                                // Se houve page fault, não modifica PC
+                            } else {
+                                pc++;
+                            }
+                            break;
+
+                        case JMPIGT: // If RS>RC then PC <- k else PC++
+                            if (reg[ir.ra] > reg[ir.rb]) {
+                                pc = ir.p;
+                            } else {
+                                pc++;
+                            }
+                            break;
+
+                        case DATA: // pc está sobre área supostamente de dados
+                            irpt.add(Interrupts.intInstrucaoInvalida);
+                            break;
+
+                        // Chamadas de sistema
+                        case SYSCALL:
+                            sysCall.handle(); // <<<<< aqui desvia para rotina de chamada de sistema, no momento so
+                            // temos IO
+                            break;
+
+                        case STOP: // por enquanto, para execucao
+                            sysCall.stop();
+                            cpuStop = true;
+                            break;
+
+                        // Inexistente
+                        default:
+                            irpt.add(Interrupts.intInstrucaoInvalida);
+                            break;
+                    }
                 }
             }
             // --------------------------------------------------------------------------------------------------
             // VERIFICA INTERRUPÇÃO !!! - TERCEIRA FASE DO CICLO DE INSTRUÇÕES
             if (!irpt.isEmpty()) { // existe interrupção
                 ih.handle(irpt);                  // desvia para rotina de tratamento - esta rotina é do SO
-                cpuStop = true;                   // nesta versao, para a CPU
+
+                // IMPORTANTE: Para page faults, não devemos parar a CPU
+                // O handler de interrupção deve tratar o page fault e permitir que a CPU continue
+                boolean hasPageFault = false;
+                for (Interrupts interrupt : irpt) {
+                    if (interrupt == Interrupts.PageFault) {
+                        hasPageFault = true;
+                        break;
+                    }
+                }
+
+                // Se não é page fault, para a CPU (comportamento original)
+                if (!hasPageFault) {
+                    cpuStop = true;
+                }
+                // Se é page fault, a CPU continuará executando após o tratamento
+                // O PC não foi incrementado, então a instrução será re-executada
             }
         } // FIM DO CICLO DE UMA INSTRUÇÃO
     }

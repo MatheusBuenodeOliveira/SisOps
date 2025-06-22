@@ -73,7 +73,7 @@ public class Programs {
 							new Word(Opcode.LDI, 8, -1, 1),
 							new Word(Opcode.LDI, 9, -1, 4),
 							new Word(Opcode.SYSCALL, 0, 0, 0),
-							new Word(Opcode.LDI, 8, -1, 2),
+							new Word(Opcode.LDI, 8, -1, 3),
 							new Word(Opcode.LDI, 9, -1, 0),
 							new Word(Opcode.SYSCALL, 0, 0, 0),
 							new Word(Opcode.LDI, 0, -1, 5),

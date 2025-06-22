@@ -13,7 +13,7 @@ public class SO {
         ih = new InterruptHandling(hw);
         sc = new SysCallHandling(hw);
         hw.cpu.setAddressOfHandlers(ih, sc);
-        memoryManager = new MemoryManager(hw.mem);
+        memoryManager = new MemoryManager(hw.mem,hw.disk);
         utils = new Utilities(memoryManager, hw);
 
         processManager = new ProcessManager(memoryManager, hw);

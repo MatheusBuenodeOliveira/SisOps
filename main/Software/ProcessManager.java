@@ -110,16 +110,66 @@ public class ProcessManager {
     public PCB createProcess(Program program) {
         try {
             processLock.lock();
-            ArrayList<Page> pages = memoryManager.alloc(program.image);
+            int pid = generatePID();
+
+            // Cria template no disco primeiro
+            hw.disk.createProcessFromTemplate(pid, program.name);
+
+            // Aloca páginas virtuais usando PID
+            ArrayList<Page> pages = memoryManager.alloc(program.image, program.name, pid);
             if (pages.isEmpty()) {
                 System.out.println("Falha em alocar memória de um processo: " + program.name);
                 return null;
             }
 
-            PCB pcb = new PCB(generatePID(), pages, program.name);
+            PCB pcb = new PCB(pid, pages, program.name);
             readyQueue.add(pcb);
             System.out.println("Process criado com PID: " + pcb.pid + " - " + program.name);
             return pcb;
+        } finally {
+            processLock.unlock();
+        }
+    }
+
+    public void handlePageFault() {
+        try {
+            processLock.lock();
+
+            if (runningProcess == null) {
+                System.out.println("Page fault sem processo em execução!");
+                return;
+            }
+
+            // Calcula qual página causou o page fault baseado no PC atual
+            int faultingPage = hw.cpu.pagedFaultedAdress / 8;
+
+            System.out.println("Page fault no processo " + runningProcess.programName +
+                    " (PID: " + runningProcess.pid + "), página " + faultingPage +
+                    ", PC: " + hw.cpu.pc);
+
+            // Salva contexto do processo atual
+            runningProcess.saveContext();
+            runningProcess.state = ProcessState.BLOCKED;
+
+            // Tenta carregar a página usando PID
+            boolean success = memoryManager.handlePageFault(runningProcess.pid,
+                    runningProcess.programName,
+                    faultingPage);
+
+            if (success) {
+                // Página carregada com sucesso, processo pode continuar
+                runningProcess.state = ProcessState.READY;
+                readyQueue.add(runningProcess);
+                runningProcess = null;
+
+                // Escalona próximo processo
+                schedule();
+            } else {
+                // Falha ao carregar página - termina processo
+                System.out.println("Falha ao carregar página - terminando processo " + runningProcess.pid);
+                terminateRunningProcess();
+            }
+
         } finally {
             processLock.unlock();
         }
@@ -328,7 +378,7 @@ public class ProcessManager {
 
             if (toRemove != null) {
                 readyQueue.remove(toRemove);
-                freeProcessMemory(toRemove);
+                memoryManager.deallocProcess(pid); // Usa PID para liberar memória
                 System.out.println("Processo com PID " + pid + " removido da fila de prontos.");
                 return true;
             }
@@ -344,7 +394,7 @@ public class ProcessManager {
 
             if (toRemove != null) {
                 blockedQueue.remove(toRemove);
-                freeProcessMemory(toRemove);
+                memoryManager.deallocProcess(pid); // Usa PID para liberar memória
                 System.out.println("Processo com PID " + pid + " removido da fila de bloqueados.");
                 return true;
             }
@@ -389,8 +439,8 @@ public class ProcessManager {
             if (runningProcess != null) {
                 System.out.println("Process PID: " + runningProcess.pid + " terminated");
 
-                // Free memory
-                freeProcessMemory(runningProcess);
+                // Libera memória usando PID
+                memoryManager.deallocProcess(runningProcess.pid);
 
                 runningProcess = null;
             }
@@ -425,7 +475,7 @@ public class ProcessManager {
             try {
                 while (running) {
                     //Thread.sleep(0,1);
-                    Thread.sleep(5000);
+                    Thread.sleep(10000);
                     cpu.setInterupt(Interrupts.intTimer);
                     break;
                 }
