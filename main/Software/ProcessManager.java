@@ -3,14 +3,16 @@ package Software;
 import java.util.ArrayList;
 import java.util.LinkedList;
 import java.util.Queue;
+import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
 import Hardware.*;
 import Programs.Program;
+import Programs.Programs;
 
 public class ProcessManager {
-    private Queue<PCB> readyQueue;
-    private Queue<PCB> blockedQueue; // Queue for processes waiting on I/O
+    private ConcurrentLinkedQueue<PCB> readyQueue;
+    public ConcurrentLinkedQueue<PCB> blockedQueue; // Queue for processes waiting on I/O
     private PCB runningProcess;
     private MemoryManager memoryManager;
     private CPU cpu;
@@ -26,8 +28,8 @@ public class ProcessManager {
         this.memoryManager = memoryManager;
         this.hw = hw;
         this.cpu = hw.cpu;
-        this.readyQueue = new LinkedList<>();
-        this.blockedQueue = new LinkedList<>();
+        this.readyQueue = new ConcurrentLinkedQueue<>();
+        this.blockedQueue = new ConcurrentLinkedQueue<>();
     }
 
     public void setInterruptHandler(InterruptHandling ih) {
@@ -51,6 +53,18 @@ public class ProcessManager {
         }
     }
 
+    public void unblockProcessFromIO(PCB found) {
+        try {
+            processLock.lock();
+            blockedQueue.remove(found);
+            found.isWaitingIORequest = false;
+            found.state = ProcessState.READY;
+            readyQueue.add(found);
+        }finally {
+            processLock.unlock();
+        }
+    }
+
     // Process Control Block to store process state
     public class PCB {
         public int pid; //Id unico do processo
@@ -59,6 +73,8 @@ public class ProcessManager {
         public int[] registers; // registradores da última vez que ele rodou
         public ProcessState state; // estado atual do processo
         public String programName; // Nome do programa
+        public boolean isWaitingIORequest;
+        public int IOReturnAddress;
 
         public PCB(int pid, ArrayList<Page> pages, String programName) {
             this.pid = pid;
@@ -82,6 +98,7 @@ public class ProcessManager {
                 cpu.reg[i] = this.registers[i];
             }
             cpu.setContext(this.pages, this.pc);
+            cpu.ProcessName = this.programName;
         }
     }
 
@@ -138,21 +155,49 @@ public class ProcessManager {
                 runningProcess.loadContext();
                 System.out.println("Scheduled process PID: " + runningProcess.pid + " PC: " + runningProcess.pc);
             } else {
-                runningProcess = null;
-                System.out.println("No processes to schedule");
+                Program nopProgram = new Programs().retrieveProgram("nop");
+                if (nopProgram != null) {
+                    PCB nopProcess = new PCB(-1, memoryManager.alloc(nopProgram.image), "NOP");
+                    runningProcess = nopProcess;
+                    runningProcess.state = ProcessState.RUNNING;
+                    runningProcess.loadContext();
+                    System.out.println("Scheduled NOP process (idle CPU).");
+                }
             }
         } finally {
             processLock.unlock();
         }
     }
 
+    public PCB handleIOAndblockRunningProcess(int adress){
+        try {
+            processLock.lock();
+
+            var savedProcess = runningProcess;
+            runningProcess.IOReturnAddress = adress;
+            runningProcess.state = ProcessState.BLOCKED;
+            runningProcess.isWaitingIORequest = true;
+            runningProcess.pc = hw.cpu.pc++;
+            runningProcess.saveContext();
+
+            blockedQueue.add(runningProcess);
+            runningProcess = null;
+
+            schedule();
+            return savedProcess;
+        } finally {
+            processLock.unlock();
+        }
+    }
 
     // Handle - interupção de relógio
     public void handleTimerInterrupt() {
         try {
             processLock.lock();
-            System.out.println("Interrupção de relógio " + runningProcess.pid + "- troca de contexto");
+            System.out.println("Interrupção de relógio " + runningProcess.pid + " - troca de contexto");
             schedule();
+        }catch (Exception e){
+
         } finally {
             processLock.unlock();
         }
@@ -324,6 +369,11 @@ public class ProcessManager {
             toReturn = runningProcess;
         }
         for (PCB pcb : readyQueue) {
+            if (pcb.pid == pid) {
+                toReturn = pcb;
+            }
+        }
+        for (PCB pcb : blockedQueue) {
             if (pcb.pid == pid) {
                 toReturn = pcb;
             }

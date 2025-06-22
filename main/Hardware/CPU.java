@@ -1,6 +1,8 @@
 package Hardware;
 
+import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.ConcurrentLinkedQueue;
 
 import Software.*;
 import Software.Opcode;
@@ -12,11 +14,13 @@ public class CPU {
     public int pc;     // ... composto de program counter,
     private Word ir;    // instruction register,
     public int[] reg;  // registradores da CPU
-    private Interrupts irpt; // durante instrucao, interrupcao pode ser sinalizada
-                        // FIM CONTEXTO DA CPU: tudo que precisa sobre o estado de um processo para
-                        // executa-lo
-                        // nas proximas versoes isto pode modificar
-
+    private ConcurrentLinkedQueue<Interrupts> irpt;
+    public ConcurrentLinkedQueue<ProcessManager.PCB> ReturningOfIO;
+    // durante instrucao, interrupcao pode ser sinalizada
+    // FIM CONTEXTO DA CPU: tudo que precisa sobre o estado de um processo para
+    // executa-lo
+    // nas proximas versoes isto pode modificar
+    public String ProcessName;
     private Word[] m;   // m é o array de memória "física", CPU tem uma ref a m para acessar
 
     private InterruptHandling ih;    // significa desvio para rotinas de tratamento de Int - se int ligada, desvia
@@ -29,12 +33,14 @@ public class CPU {
     private boolean debug;      // se true entao mostra cada instrucao em execucao
     private Utilities u;        // para debug (dump)
     private List<Page> processPage;
+
     public CPU(Memory _mem, boolean _debug) { // ref a MEMORIA passada na criacao da CPU
         maxInt = 32767;            // capacidade de representacao modelada
         minInt = -32767;           // se exceder deve gerar interrupcao de overflow
         m = _mem.pos;              // usa o atributo 'm' para acessar a memoria, só para ficar mais pratico
         reg = new int[10];         // aloca o espaço dos registradores - regs 8 e 9 usados somente para IO
-
+        irpt = new ConcurrentLinkedQueue<>();
+        ReturningOfIO = new ConcurrentLinkedQueue<>();
         debug = _debug;            // se true, print da instrucao em execucao
 
     }
@@ -48,21 +54,20 @@ public class CPU {
         u = _u;                     // aponta para rotinas utilitárias - fazer dump da memória na tela
     }
 
-
                                    // verificação de enderecamento 
     private boolean legal(int e) { // todo acesso a memoria tem que ser verificado se é válido - 
                                    // aqui no caso se o endereco é um endereco valido em toda memoria
         if (e >= 0 && e < m.length) {
             return true;
         } else {
-            irpt = Interrupts.intEnderecoInvalido;    // se nao for liga interrupcao no meio da exec da instrucao
+            irpt.add(Interrupts.intEnderecoInvalido);    // se nao for liga interrupcao no meio da exec da instrucao
             return false;
         }
     }
 
     private boolean testOverflow(int v) {             // toda operacao matematica deve avaliar se ocorre overflow
         if ((v < minInt) || (v > maxInt)) {
-            irpt = Interrupts.intOverflow;            // se houver liga interrupcao no meio da exec da instrucao
+            irpt.add(Interrupts.intOverflow);            // se houver liga interrupcao no meio da exec da instrucao
             return false;
         }
         ;
@@ -70,13 +75,13 @@ public class CPU {
     }
 
     public void setInterupt(Interrupts irpt){
-        this.irpt = irpt;
+        this.irpt.add(irpt);
     }
 
     public void setContext(List<Page> _processPage, int pcCotnext) {                 // usado para setar o contexto da cpu para rodar um processo
         processPage = _processPage;                                       // [ nesta versao é somente colocar o PC na posicao 0 ]
         pc = pcCotnext;                                     // pc cfe endereco logico
-        irpt = Interrupts.noInterrupt;                // reset da interrupcao registrada
+        //irpt.add(Interrupts.noInterrupt);                // reset da interrupcao registrada
     }
 
     public int getMemAddr(int logicalAddr) {
@@ -87,7 +92,7 @@ public class CPU {
 
         // verifica se o endereço é válido
         if (pageIndex >= processPage.size()) {
-            irpt = Interrupts.intEnderecoInvalido;
+            irpt.add(Interrupts.intEnderecoInvalido);
             return -1;
         }
 
@@ -110,7 +115,7 @@ public class CPU {
                 var memadd = getMemAddr(pc);
                 ir = m[memadd];  // <<<<<<<<<<<< AQUI faz FETCH - busca posicao da memoria apontada por pc, guarda em ir
                              // resto é dump de debug
-                if (debug) {
+                if (debug && ProcessName != "NOP") {
                     System.out.print("                                              regs: ");
                     for (int i = 0; i < 10; i++) {
                         System.out.print(" r[" + i + "]:" + reg[i]);
@@ -118,9 +123,12 @@ public class CPU {
                     ;
                     System.out.println();
                 }
-                if (debug) {
+                if (debug && ProcessName != "NOP") {
                     System.out.print("                      pc: " + pc + "       exec: ");
                     u.dump(ir);
+                }else{
+                    System.out.println("nop");
+                    System.out.println("                      pc: " + pc + "       exec: ");
                 }
 
             // --------------------------------------------------------------------------------------------------
@@ -275,14 +283,14 @@ public class CPU {
                         break;
 
                     case DATA: // pc está sobre área supostamente de dados
-                        irpt = Interrupts.intInstrucaoInvalida;
+                        irpt.add(Interrupts.intInstrucaoInvalida);
                         break;
 
                     // Chamadas de sistema
                     case SYSCALL:
+
                         sysCall.handle(); // <<<<< aqui desvia para rotina de chamada de sistema, no momento so
                                             // temos IO
-                        pc++;
                         break;
 
                     case STOP: // por enquanto, para execucao
@@ -292,13 +300,13 @@ public class CPU {
 
                     // Inexistente
                     default:
-                        irpt = Interrupts.intInstrucaoInvalida;
+                        irpt.add(Interrupts.intInstrucaoInvalida);
                         break;
                 }
             }
             // --------------------------------------------------------------------------------------------------
             // VERIFICA INTERRUPÇÃO !!! - TERCEIRA FASE DO CICLO DE INSTRUÇÕES
-            if (irpt != Interrupts.noInterrupt) { // existe interrupção
+            if (!irpt.isEmpty()) { // existe interrupção
                 ih.handle(irpt);                  // desvia para rotina de tratamento - esta rotina é do SO
                 cpuStop = true;                   // nesta versao, para a CPU
             }

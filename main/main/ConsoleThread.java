@@ -2,6 +2,7 @@ package main;
 
 import java.util.Scanner;
 import Programs.Programs;
+import Software.Interrupts;
 import Software.Page;
 import Software.ProcessManager;
 import main.Sistema;
@@ -54,6 +55,27 @@ public class ConsoleThread extends Thread {
                 processManager.startSchedulerThread();
             } else if (command.equals("schkill")) {
                 processManager.shutdownScheduler();
+            } else if (command.startsWith("IO")) {
+                int pid = Integer.parseInt(tokens[1]);
+                int value = Integer.parseInt(tokens[2]);
+
+                ProcessManager.PCB found = null;
+                for (ProcessManager.PCB p : processManager.blockedQueue) {
+                    if (p.pid == pid) {
+                        found = p;
+                        break;
+                    }
+                }
+
+                if (found != null) {
+                    sistema.hw.mem.pos[found.IOReturnAddress].p = value;
+                    sistema.hw.cpu.ReturningOfIO.add(found);
+                    sistema.hw.cpu.setInterupt(Interrupts.IOReturn);
+                    System.out.println("Valor de IO retornado para o processo " + pid + ": " + value);
+                } else {
+                    System.out.println("Processo com PID " + pid + " não encontrado na fila de bloqueados.");
+                }
+
             } else {
                 System.out.println("Comando desconhecido. Digite 'help' para ver os comandos disponíveis.");
             }
@@ -73,6 +95,7 @@ public class ConsoleThread extends Thread {
         System.out.println("  new <p>      - Cria um novo processo");
         System.out.println("  hacf         - Que os jogos começem");
         System.out.println("  schkill      - Derruba a thread de escalonamento ");
+        System.out.println("  IO [pid] [value]   - Retorna um valor de IO para o processo ");
         System.out.println("  exit         - Sai do sistema");
         System.out.println("=========================================");
     }

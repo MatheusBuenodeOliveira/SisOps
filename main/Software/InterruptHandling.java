@@ -2,6 +2,9 @@ package Software;
 
 import Hardware.*;
 
+import java.util.List;
+import java.util.concurrent.ConcurrentLinkedQueue;
+
 public class InterruptHandling {
     private HW hw;
     private ProcessManager processManager;
@@ -14,12 +17,17 @@ public class InterruptHandling {
         this.processManager = pm;
     }
 
-    public void handle(Interrupts irpt) {
-        System.out.println("Interrupcao " + irpt + "   pc: " + hw.cpu.pc);
+    public void handle(ConcurrentLinkedQueue<Interrupts> irpt) {
+        for (Interrupts intrp : irpt){
+            System.out.println("Interrupcao " + irpt + "   pc: " + hw.cpu.pc);
 
-        if (irpt == Interrupts.intTimer && processManager != null) {
-            // Handle timer interrupt by telling the process manager
-            processManager.handleTimerInterrupt();
+            if (intrp == Interrupts.intTimer && processManager != null) {
+                processManager.handleTimerInterrupt();
+            }
+            if(intrp == Interrupts.IOReturn){
+                processManager.unblockProcessFromIO(hw.cpu.ReturningOfIO.poll());
+            }
+            irpt.remove(intrp);
         }
     }
 

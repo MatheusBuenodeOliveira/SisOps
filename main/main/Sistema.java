@@ -18,7 +18,7 @@ public class Sistema {
     }
 
     public void run() {
-        System.out.println("Iniciando SisOps - Sistema Operacional Simulado");
+        System.out.println("Iniciando Dante - Sistema Operacional Simulado");
 
         // Inicia a thread do console para receber comandos do usuário
         consoleThread = new ConsoleThread(this, progs, so.processManager);
@@ -35,7 +35,7 @@ public class Sistema {
     }
 
     public static void main(String args[]) {
-        Sistema s = new Sistema(1024);
+        Sistema s = new Sistema(32);
         s.run();
     }
 }

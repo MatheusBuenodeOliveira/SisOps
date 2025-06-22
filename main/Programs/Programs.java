@@ -67,7 +67,25 @@ public class Programs {
 							new Word(Opcode.LDI, 0, -1, 5),
 							new Word(Opcode.STOP, -1, -1, -1)
 					}
-			)
+			),
+			new Program("IOtest",
+					new Word[]{
+							new Word(Opcode.LDI, 8, -1, 1),
+							new Word(Opcode.LDI, 9, -1, 4),
+							new Word(Opcode.SYSCALL, 0, 0, 0),
+							new Word(Opcode.LDI, 8, -1, 2),
+							new Word(Opcode.LDI, 9, -1, 0),
+							new Word(Opcode.SYSCALL, 0, 0, 0),
+							new Word(Opcode.LDI, 0, -1, 5),
+							new Word(Opcode.STOP, -1, -1, -1)
+					}
+			),
+			new Program("nop",
+					new Word[]{
+							new Word(Opcode.LDI, 0, -1, 0),
+							new Word(Opcode.JMP, -1, -1, 0)
+					}
+			),
 
     };
 }

@@ -1,6 +1,7 @@
 package Software;
 
 import Hardware.*;
+import main.ConsoleThread;
 
 public class SysCallHandling {
     private HW hw;
@@ -23,8 +24,13 @@ public class SysCallHandling {
         System.out.println("SYSCALL pars: " + hw.cpu.reg[8] + " / " + hw.cpu.reg[9]);
         if (hw.cpu.reg[8] == 1) {
             // Leitura
+            //deve bloquear o processo e soltar uma interrupção quando voltar
+            processManager.handleIOAndblockRunningProcess(hw.cpu.reg[9]);
         } else if (hw.cpu.reg[8] == 2) {
-            System.out.println("OUT: " + hw.mem.pos[hw.cpu.reg[9]].p);
+            System.out.println("-------------------------------------");
+            System.out.println("OUT: " + hw.cpu.reg[9]);
+            System.out.println("-------------------------------------");
+            hw.cpu.pc++;
         } else {
             System.out.println("PARAMETRO INVALIDO");
         }
