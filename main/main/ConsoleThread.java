@@ -68,7 +68,8 @@ public class ConsoleThread extends Thread {
                 }
 
                 if (found != null) {
-                    sistema.hw.mem.pos[found.IOReturnAddress].p = value;
+                    found.IOReturnValue = value;
+                    found.PendingPageUpdate = true;
                     sistema.hw.cpu.ReturningOfIO.add(found);
                     sistema.hw.cpu.setInterupt(Interrupts.IOReturn);
                     System.out.println("Valor de IO retornado para o processo " + pid + ": " + value);
@@ -136,7 +137,8 @@ public class ConsoleThread extends Thread {
     private void executeProgram(String command) {
         String[] parts = command.split("\\s+");
         if (parts.length != 2) {
-            System.out.println("Uso: exec [nome_do_programa]");
+            System.out.println("Uso: exec <nome_do_programa>");
+            System.out.println("Digite 'list' para ver os programas disponíveis.");
             return;
         }
 
@@ -145,25 +147,51 @@ public class ConsoleThread extends Thread {
 
         if (program == null) {
             System.out.println("Programa não encontrado: " + programName);
+            System.out.println("Digite 'list' para ver os programas disponíveis.");
             return;
         }
 
         var pcb = processManager.createProcess(program);
         if (pcb != null) {
-            System.out.println("Processo criado com PID: " + pcb.pid + " para o programa: " + programName);
+            System.out.println("✓ Processo criado com sucesso!");
+            System.out.println("  PID: " + pcb.pid);
+            System.out.println("  Programa: " + programName);
+            System.out.println("  Estado: " + pcb.state);
+
+            // Força reescalonamento se necessário
+            processManager.forceReschedule();
         } else {
-            System.out.println("Falha ao criar processo para o programa: " + programName);
+            System.out.println("✗ Falha ao criar processo para o programa: " + programName);
         }
     }
 
-    private void createProgram(String nome){
-        var newProgram = new Programs().retrieveProgram(nome);
-        if (newProgram == null) {
-            System.out.println("=== Programa não reconhecido pelo sistema ===");
+    private void createProgram(String nome) {
+        if (nome == null || nome.trim().isEmpty()) {
+            System.out.println("Uso: new <nome_do_programa>");
+            System.out.println("Digite 'list' para ver os programas disponíveis.");
             return;
         }
-        System.out.println("=== Criando Processo ===");
-        processManager.createProcess(newProgram);
+
+        var newProgram = new Programs().retrieveProgram(nome);
+        if (newProgram == null) {
+            System.out.println("✗ Programa '" + nome + "' não reconhecido pelo sistema");
+            System.out.println("Digite 'list' para ver os programas disponíveis.");
+            return;
+        }
+
+        System.out.println("=== Criando Novo Processo ===");
+        var pcb = processManager.createProcess(newProgram);
+        if (pcb != null) {
+            System.out.println("✓ Processo criado com sucesso!");
+            System.out.println("  PID: " + pcb.pid);
+            System.out.println("  Programa: " + nome);
+
+            // Força reescalonamento se necessário
+            processManager.forceReschedule();
+        } else {
+            System.out.println("✗ Falha ao criar o processo");
+        }
+        System.out.println("=============================");
     }
 
     private void listProcesses() {

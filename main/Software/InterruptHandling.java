@@ -30,7 +30,8 @@ public class InterruptHandling {
 
                 case IOReturn:
                     if (processManager != null) {
-                        processManager.unblockProcessFromIO(hw.cpu.ReturningOfIO.poll());
+                        ProcessManager.PCB returningFromIO = hw.cpu.ReturningOfIO.poll();
+                        processManager.unblockProcessFromIO(returningFromIO);
                     }
                     break;
 

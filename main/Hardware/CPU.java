@@ -382,6 +382,8 @@ public class CPU {
 
                         // Chamadas de sistema
                         case SYSCALL:
+                            if(reg[8] == 1)
+                                cpuStop = true;
                             sysCall.handle(); // <<<<< aqui desvia para rotina de chamada de sistema, no momento so
                             // temos IO
                             break;

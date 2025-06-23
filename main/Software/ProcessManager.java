@@ -14,6 +14,7 @@ public class ProcessManager {
     private ConcurrentLinkedQueue<PCB> readyQueue;
     public ConcurrentLinkedQueue<PCB> blockedQueue; // Queue for processes waiting on I/O
     private PCB runningProcess;
+    private PCB nopProcess; // Processo NOP dedicado
     private MemoryManager memoryManager;
     private CPU cpu;
     private HW hw;
@@ -30,6 +31,10 @@ public class ProcessManager {
         this.cpu = hw.cpu;
         this.readyQueue = new ConcurrentLinkedQueue<>();
         this.blockedQueue = new ConcurrentLinkedQueue<>();
+        this.nopProcess = null;
+
+        // Cria o processo NOP na inicialização
+        createNopProcess();
     }
 
     public void setInterruptHandler(InterruptHandling ih) {
@@ -53,6 +58,32 @@ public class ProcessManager {
         }
     }
 
+    /**
+     * Cria o processo NOP que será usado quando não houver outros processos
+     */
+    private void createNopProcess() {
+        try {
+            processLock.lock();
+
+            Program nopProgram = new Programs().retrieveProgram("nop");
+            if (nopProgram != null) {
+                // Aloca páginas para o processo NOP
+                ArrayList<Page> nopPages = memoryManager.alloc(nopProgram.image, "NOP", -1);
+                if (!nopPages.isEmpty()) {
+                    nopProcess = new PCB(-1, nopPages, "NOP");
+                    nopProcess.state = ProcessState.READY;
+                    System.out.println("Processo NOP criado e pronto para uso quando necessário.");
+                } else {
+                    System.err.println("Erro: Não foi possível alocar memória para o processo NOP!");
+                }
+            } else {
+                System.err.println("Erro: Programa NOP não encontrado!");
+            }
+        } finally {
+            processLock.unlock();
+        }
+    }
+
     public void unblockProcessFromIO(PCB found) {
         try {
             processLock.lock();
@@ -60,7 +91,13 @@ public class ProcessManager {
             found.isWaitingIORequest = false;
             found.state = ProcessState.READY;
             readyQueue.add(found);
-        }finally {
+
+            // Se estava rodando NOP e agora tem processo real, força nova escalonação
+            if (runningProcess != null && runningProcess.pid == -1 && !readyQueue.isEmpty()) {
+                System.out.println("Processo desbloqueado - interrompendo NOP para escalonar processo real");
+                schedule();
+            }
+        } finally {
             processLock.unlock();
         }
     }
@@ -75,6 +112,8 @@ public class ProcessManager {
         public String programName; // Nome do programa
         public boolean isWaitingIORequest;
         public int IOReturnAddress;
+        public int IOReturnValue;
+        public boolean PendingPageUpdate;
 
         public PCB(int pid, ArrayList<Page> pages, String programName) {
             this.pid = pid;
@@ -97,8 +136,13 @@ public class ProcessManager {
             for (int i = 0; i < this.registers.length; i++) {
                 cpu.reg[i] = this.registers[i];
             }
+
             cpu.setContext(this.pages, this.pc);
             cpu.ProcessName = this.programName;
+
+            if(PendingPageUpdate){
+                hw.mem.pos[cpu.getMemAddr(this.IOReturnAddress)].p = this.IOReturnValue;
+            }
         }
     }
 
@@ -125,6 +169,14 @@ public class ProcessManager {
             PCB pcb = new PCB(pid, pages, program.name);
             readyQueue.add(pcb);
             System.out.println("Process criado com PID: " + pcb.pid + " - " + program.name);
+
+            // Se estava rodando NOP, força nova escalonação para dar prioridade ao processo real
+            if (runningProcess != null && runningProcess.pid == -1) {
+                System.out.println("Novo processo adicionado - interrompendo NOP");
+                // Marca para reescalonamento na próxima oportunidade
+                cpu.setInterupt(Interrupts.intTimer);
+            }
+
             return pcb;
         } finally {
             processLock.unlock();
@@ -186,32 +238,34 @@ public class ProcessManager {
         try {
             processLock.lock();
 
+            // Salva contexto do processo atual se existir
             if (runningProcess != null) {
-                // SALVA O CONTEXTO DO PROCESSO ATUAL NO PCB
                 runningProcess.saveContext();
-                //ALTERA O PROCESSO PARA PRONTO E MOVO PARA A FILA DE PRONTOS
-                if (runningProcess.state == ProcessState.RUNNING) {
+
+                // Se é um processo real (não NOP) e ainda está rodando, volta para fila
+                if (runningProcess.pid != -1 && runningProcess.state == ProcessState.RUNNING) {
                     runningProcess.state = ProcessState.READY;
                     readyQueue.add(runningProcess);
                 }
             }
 
-            // PEGA O PROXIMO PROCESSO DA FILA
+            // Prioriza processos reais sobre NOP
             if (!readyQueue.isEmpty()) {
                 runningProcess = readyQueue.poll();
-                //MUDA O STATUS PARA RUNNING
                 runningProcess.state = ProcessState.RUNNING;
-                //CARREGA O CONTEXTO NA CPU
                 runningProcess.loadContext();
-                System.out.println("Scheduled process PID: " + runningProcess.pid + " PC: " + runningProcess.pc);
+                System.out.println("Scheduled process PID: " + runningProcess.pid +
+                        " (" + runningProcess.programName + ") PC: " + runningProcess.pc);
             } else {
-                Program nopProgram = new Programs().retrieveProgram("nop");
-                if (nopProgram != null) {
-                    PCB nopProcess = new PCB(-1, memoryManager.alloc(nopProgram.image), "NOP");
+                // Só usa NOP se não houver processos reais
+                if (nopProcess != null) {
                     runningProcess = nopProcess;
                     runningProcess.state = ProcessState.RUNNING;
                     runningProcess.loadContext();
                     System.out.println("Scheduled NOP process (idle CPU).");
+                } else {
+                    runningProcess = null;
+                    System.out.println("Nenhum processo disponível para escalonamento!");
                 }
             }
         } finally {
@@ -244,10 +298,13 @@ public class ProcessManager {
     public void handleTimerInterrupt() {
         try {
             processLock.lock();
-            System.out.println("Interrupção de relógio " + runningProcess.pid + " - troca de contexto");
+            if (runningProcess != null) {
+                System.out.println("Interrupção de relógio PID: " + runningProcess.pid +
+                        " (" + runningProcess.programName + ") - troca de contexto");
+            }
             schedule();
-        }catch (Exception e){
-
+        } catch (Exception e) {
+            System.err.println("Erro no handleTimerInterrupt: " + e.getMessage());
         } finally {
             processLock.unlock();
         }
@@ -255,37 +312,37 @@ public class ProcessManager {
 
     // Ciclo principal do escalonador - chamado continuamente pela thread do escalonador
     public void schedulerCycle() {
+        PCB currentProcess;
+        processLock.lock();
         try {
-            processLock.lock();
-
-            // Se não houver processo em execução, mas houver processos prontos, escalona um
-            if (runningProcess == null && !readyQueue.isEmpty()) {
+            if (runningProcess == null) {
                 schedule();
             }
-
-            // Se houver um processo em execução, executa uma quantidade limitada de instruções
-            if (runningProcess != null) {
-                // Inicia a thread separada que monitora o tempo de execução
-                TimerInterrupt timer = new TimerInterrupt();
-                timer.start();
-
-                // Coloca o processo para rodar
-                System.out.println("Process PID running: " + runningProcess.pid);
-                cpu.run();
-
-                // Para a thread do timer
-                timer.stopTimer();
-            }
+            currentProcess = runningProcess;
         } finally {
             processLock.unlock();
         }
+
+        // Fora do lock:
+        if (currentProcess != null) {
+            TimerInterrupt timer = new TimerInterrupt();
+            timer.start();
+            if (currentProcess.pid != -1) {
+                System.out.println("Process PID running: " + currentProcess.pid +
+                        " (" + currentProcess.programName + ")");
+            }
+            cpu.run();
+            timer.stopTimer();
+        }
     }
+
 
     // Teste se há processos que podem ser escalonados
     public boolean hasProcessesToSchedule() {
         try {
             processLock.lock();
-            return runningProcess != null || !readyQueue.isEmpty() || !blockedQueue.isEmpty();
+            // Sempre retorna true se há NOP disponível, garantindo que o escalonador continue rodando
+            return runningProcess != null || !readyQueue.isEmpty() || !blockedQueue.isEmpty() || nopProcess != null;
         } finally {
             processLock.unlock();
         }
@@ -301,9 +358,10 @@ public class ProcessManager {
 
             // Processo em execução
             if (runningProcess != null) {
+                String status = runningProcess.pid == -1 ? "IDLE" : runningProcess.state.toString();
                 System.out.printf("%d\t%s\t%s\t\t%d%n",
                         runningProcess.pid,
-                        runningProcess.state,
+                        status,
                         runningProcess.programName,
                         runningProcess.pc);
             }
@@ -327,7 +385,7 @@ public class ProcessManager {
             }
 
             if (runningProcess == null && readyQueue.isEmpty() && blockedQueue.isEmpty()) {
-                System.out.println("Nenhum processo no sistema.");
+                System.out.println("Apenas processo NOP disponível (sistema idle).");
             }
         } finally {
             processLock.unlock();
@@ -351,6 +409,9 @@ public class ProcessManager {
             System.out.println("Páginas em uso: " + usedPages);
             System.out.println("Páginas livres: " + (totalPages - usedPages));
             System.out.printf("Utilização: %.2f%%%n", ((float)usedPages / totalPages) * 100);
+
+            // Mostra informações sobre processos na memória
+            memoryManager.printMemoryStats();
         } finally {
             processLock.unlock();
         }
@@ -360,6 +421,12 @@ public class ProcessManager {
     public boolean killProcess(int pid) {
         try {
             processLock.lock();
+
+            // Não permite matar o processo NOP
+            if (pid == -1) {
+                System.out.println("Não é possível terminar o processo NOP do sistema.");
+                return false;
+            }
 
             // Verifica se é o processo em execução
             if (runningProcess != null && runningProcess.pid == pid) {
@@ -405,13 +472,6 @@ public class ProcessManager {
         }
     }
 
-    // Libera a memória usada por um processo
-    private void freeProcessMemory(PCB process) {
-        for (Page page : process.pages) {
-            page.inUse = false;
-        }
-    }
-
     //get de processo por id
     public PCB getProcess(int pid) {
         PCB toReturn = null;
@@ -437,30 +497,57 @@ public class ProcessManager {
             processLock.lock();
 
             if (runningProcess != null) {
+                // Não termina o processo NOP, apenas escalona outro
+                if (runningProcess.pid == -1) {
+                    System.out.println("Processo NOP sendo substituído por escalonamento normal");
+                    schedule();
+                    return;
+                }
+
                 System.out.println("Process PID: " + runningProcess.pid + " terminated");
 
                 // Libera memória usando PID
                 memoryManager.deallocProcess(runningProcess.pid);
 
                 runningProcess = null;
+
+                // Escalona próximo processo (pode ser NOP se não houver outros)
+                schedule();
             }
         } finally {
             processLock.unlock();
         }
     }
 
-    // Verifica se tem algum processo ativo / admitido
+    // Verifica se tem algum processo ativo / admitido (excluindo NOP)
     public boolean hasActiveProcesses() {
         try {
             processLock.lock();
-            return runningProcess != null || !readyQueue.isEmpty() || !blockedQueue.isEmpty();
+            // Considera apenas processos reais (PID != -1)
+            boolean hasRunning = runningProcess != null && runningProcess.pid != -1;
+            return hasRunning || !readyQueue.isEmpty() || !blockedQueue.isEmpty();
+        } finally {
+            processLock.unlock();
+        }
+    }
+
+    /**
+     * Força uma nova escalonação - útil quando novos processos são adicionados
+     */
+    public void forceReschedule() {
+        try {
+            processLock.lock();
+            // Se está rodando NOP e há processos reais esperando
+            if (runningProcess != null && runningProcess.pid == -1 && !readyQueue.isEmpty()) {
+                cpu.setInterupt(Interrupts.intTimer);
+            }
         } finally {
             processLock.unlock();
         }
     }
 
     private class TimerInterrupt extends Thread {
-        private boolean running;
+        private volatile boolean running;
 
         public TimerInterrupt() {
             this.running = true;
@@ -474,13 +561,19 @@ public class ProcessManager {
         public void run() {
             try {
                 while (running) {
-                    //Thread.sleep(0,1);
-                    Thread.sleep(10000);
-                    cpu.setInterupt(Interrupts.intTimer);
-                    break;
+                    if (runningProcess != null && runningProcess.pid == -1) {
+                        Thread.sleep(1000);
+                    } else {
+                        Thread.sleep(10000);
+                    }
+
+                    if (running) {
+                        cpu.setInterupt(Interrupts.intTimer);
+                        break;
+                    }
                 }
             } catch (InterruptedException e) {
-                e.printStackTrace();
+                // Thread foi interrompida, finaliza normalmente
             }
         }
     }
