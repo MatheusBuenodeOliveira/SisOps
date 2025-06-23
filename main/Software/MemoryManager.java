@@ -135,7 +135,8 @@ public class MemoryManager {
         physicalPage.virtualPageNumber = virtualPage.virtualPageNumber;
 
         // Adiciona à fila de memória para FIFO
-        memoryQueue.add(physicalPage);
+        if(pid != -1)
+            memoryQueue.add(physicalPage);
 
         System.out.println("Página " + virtualPage.virtualPageNumber + " do processo " +
                 processName + " (PID: " + pid + ") carregada na memória física (endereço " +

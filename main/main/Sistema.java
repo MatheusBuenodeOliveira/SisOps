@@ -35,7 +35,7 @@ public class Sistema {
     }
 
     public static void main(String args[]) {
-        Sistema s = new Sistema(32);
+        Sistema s = new Sistema(24);
         s.run();
     }
 }

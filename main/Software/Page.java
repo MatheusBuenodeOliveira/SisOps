@@ -23,7 +23,6 @@ public class Page {
                 "start=" + pageStart +
                 ", end=" + pageEnd +
                 ", size=" + size +
-                ", inUse=" + inUse +
                 ", inMemory=" + isInMemory +
                 ", process='" + processName + '\'' +
                 ", pid=" + pid +

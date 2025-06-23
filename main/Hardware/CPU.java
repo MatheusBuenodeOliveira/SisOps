@@ -136,6 +136,15 @@ public class CPU {
         return true;
     }
 
+    public void printPaginasDoProcesso() {
+        for (int i = 0; i < processPage.size(); i++) {
+            Page page = processPage.get(i);
+            System.out.println("Página " + i + ": " + page);
+        }
+
+        System.out.println("==================================\n");
+    }
+
     private Word safeMemoryFetchWord(int logicalAddr) {
         int physicalAddr = getMemAddr(logicalAddr);
         if (physicalAddr == -1) {
@@ -172,10 +181,12 @@ public class CPU {
                         System.out.println();
                     }
                     if (debug && ProcessName != "NOP") {
+
                         System.out.print("                      pc: " + pc + "       exec: ");
                         u.dump(ir);
                     }else{
                         System.out.println("nop");
+                        printPaginasDoProcesso();
                         System.out.println("                      pc: " + pc + "       exec: ");
                     }
 

@@ -323,7 +323,6 @@ public class ProcessManager {
             processLock.unlock();
         }
 
-        // Fora do lock:
         if (currentProcess != null) {
             TimerInterrupt timer = new TimerInterrupt();
             timer.start();
@@ -396,21 +395,6 @@ public class ProcessManager {
     public void showMemoryStatus() {
         try {
             processLock.lock();
-
-            int totalPages = 0;
-            int usedPages = 0;
-
-            for (Page page : memoryManager.pageList) {
-                totalPages++;
-                if (page.inUse) usedPages++;
-            }
-
-            System.out.println("Total de páginas: " + totalPages);
-            System.out.println("Páginas em uso: " + usedPages);
-            System.out.println("Páginas livres: " + (totalPages - usedPages));
-            System.out.printf("Utilização: %.2f%%%n", ((float)usedPages / totalPages) * 100);
-
-            // Mostra informações sobre processos na memória
             memoryManager.printMemoryStats();
         } finally {
             processLock.unlock();
