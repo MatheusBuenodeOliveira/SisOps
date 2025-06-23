@@ -216,6 +216,7 @@ public class MemoryManager {
         System.out.println("PAGE FAULT: Processo " + processName + " (PID: " + pid +
                 "), página " + virtualPageNumber);
 
+
         ArrayList<Page> processPages = processVirtualPages.get(pid);
         if (processPages == null || virtualPageNumber >= processPages.size()) {
             System.out.println("Erro: Página virtual inválida!");

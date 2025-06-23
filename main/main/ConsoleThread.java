@@ -37,12 +37,7 @@ public class ConsoleThread extends Thread {
             } else if (command.startsWith("ps")) {
                 listProcesses();
             } else if (command.startsWith("dump")) {
-                var parts = command.split(" ");
-                if (parts.length < 2) {
-                    System.out.println("Uso: dump <id_do_processo>");
-                    return;
-                }
-                dumpProcess(Integer.parseInt(parts[1]));
+                dumpProcess();
             } else if (command.startsWith("exec")) {
                 executeProgram(command);
             } else if (command.equals("mem")) {
@@ -110,28 +105,8 @@ public class ConsoleThread extends Thread {
         }
     }
 
-    private void dumpProcess(int processId) {
-        ProcessManager.PCB pcb = processManager.getProcess(processId);
-        if (pcb == null) {
-            System.out.println("Processo " + processId + " não encontrado");
-            return;
-        }
-
-        System.out.println("=== Dump do Processo " + processId + " ===");
-        System.out.println("Estado: " + pcb.state);
-        System.out.println("PC: " + pcb.pc);
-
-        System.out.println("Registradores:");
-        for (int i = 0; i < pcb.registers.length; i++) {
-            System.out.println("R" + i + ": " + pcb.registers[i]);
-        }
-
-        System.out.println("Páginas:");
-        for (Page page : pcb.pages) {
-            System.out.println("  Início: " + page.pageStart + ", Fim: " + page.pageEnd);
-            // Dump do conteúdo da memória para cada página
-            sistema.so.utils.dump(page.pageStart, page.pageEnd);
-        }
+    private void dumpProcess() {
+        sistema.so.utils.dump(0,sistema.hw.mem.pos.length -1);
     }
 
     private void executeProgram(String command) {

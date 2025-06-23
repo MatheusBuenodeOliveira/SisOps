@@ -146,6 +146,15 @@ public class ProcessManager {
                 this.PendingPageUpdate = false;
             }
         }
+
+        public String printTabelaPaginas(){
+            StringBuilder sb = new StringBuilder();
+            sb.append("Page Table for process: ").append(this.programName).append("\n");
+            for (int i = 0; i < pages.size(); i++) {
+                sb.append("Page ").append(i).append(": ").append(pages.get(i)).append("\n");
+            }
+            return sb.toString();
+        }
     }
 
     public enum ProcessState {
@@ -190,7 +199,7 @@ public class ProcessManager {
         if (running == null) return;
 
         System.out.println("Page Fault! Bloqueando processo " + running.programName + " (PID: " + running.pid + ")");
-
+        System.out.println(running.printTabelaPaginas());
         // Remove da CPU
         runningProcess.saveContext();
         running.state = ProcessState.BLOCKED;
@@ -214,6 +223,7 @@ public class ProcessManager {
             // Retorna o processo ao CPU via fila especial
             hw.cpu.ReturningOfIO.add(running);
             hw.cpu.setInterupt(Interrupts.IOReturn);
+            System.out.println(running.printTabelaPaginas());
         }).start();
     }
 
@@ -248,7 +258,6 @@ public class ProcessManager {
                 System.out.println("Scheduled process PID: " + runningProcess.pid +
                         " (" + runningProcess.programName + ") PC: " + runningProcess.pc);
             } else {
-                // Só usa NOP se não houver processos reais
                 if (nopProcess != null) {
                     runningProcess = nopProcess;
                     runningProcess.state = ProcessState.RUNNING;
