@@ -142,6 +142,8 @@ public class ProcessManager {
 
             if(PendingPageUpdate){
                 hw.mem.pos[cpu.getMemAddr(this.IOReturnAddress)].p = this.IOReturnValue;
+
+                this.PendingPageUpdate = false;
             }
         }
     }
@@ -184,48 +186,37 @@ public class ProcessManager {
     }
 
     public void handlePageFault() {
-        try {
-            processLock.lock();
+        PCB running = runningProcess;
+        if (running == null) return;
 
-            if (runningProcess == null) {
-                System.out.println("Page fault sem processo em execução!");
-                return;
+        System.out.println("Page Fault! Bloqueando processo " + running.programName + " (PID: " + running.pid + ")");
+
+        // Remove da CPU
+        runningProcess.saveContext();
+        running.state = ProcessState.BLOCKED;
+        runningProcess = null;
+        blockedQueue.add(running);
+
+        int faultAddr = hw.cpu.pagedFaultedAdress;
+        int virtualPageNumber = faultAddr / 8;
+
+        // Simula IO para recarregar a página
+        new Thread(() -> {
+            try {
+                Thread.sleep(10000); // simula tempo de I/O
+            } catch (InterruptedException e) {
+                e.printStackTrace();
             }
 
-            // Calcula qual página causou o page fault baseado no PC atual
-            int faultingPage = hw.cpu.pagedFaultedAdress / 8;
+            // Após "I/O", carrega página na memória
+            memoryManager.handlePageFault(running.pid, running.programName, virtualPageNumber);
 
-            System.out.println("Page fault no processo " + runningProcess.programName +
-                    " (PID: " + runningProcess.pid + "), página " + faultingPage +
-                    ", PC: " + hw.cpu.pc);
-
-            // Salva contexto do processo atual
-            runningProcess.saveContext();
-            runningProcess.state = ProcessState.BLOCKED;
-
-            // Tenta carregar a página usando PID
-            boolean success = memoryManager.handlePageFault(runningProcess.pid,
-                    runningProcess.programName,
-                    faultingPage);
-
-            if (success) {
-                // Página carregada com sucesso, processo pode continuar
-                runningProcess.state = ProcessState.READY;
-                readyQueue.add(runningProcess);
-                runningProcess = null;
-
-                // Escalona próximo processo
-                schedule();
-            } else {
-                // Falha ao carregar página - termina processo
-                System.out.println("Falha ao carregar página - terminando processo " + runningProcess.pid);
-                terminateRunningProcess();
-            }
-
-        } finally {
-            processLock.unlock();
-        }
+            // Retorna o processo ao CPU via fila especial
+            hw.cpu.ReturningOfIO.add(running);
+            hw.cpu.setInterupt(Interrupts.IOReturn);
+        }).start();
     }
+
 
     // Generate a unique process ID
     private int nextPID = 1;
